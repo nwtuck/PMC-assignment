@@ -1,0 +1,96 @@
+---
+title: "PracMachineLearningAssignment"
+author: "Wei Tuck"
+date: "Monday, April 27, 2015"
+output: html_document
+---
+
+####Libraries used
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+library(randomForest)
+```
+
+####Reading and Cleaning the Data
+```{r}
+trainRaw <- read.csv("pml-training.csv")
+testRaw <- read.csv("pml-testing.csv")
+```
+
+```{r}
+dim(trainRaw)
+dim(testRaw)
+```
+There are `r dim(trainRaw)[1]` observations and `r dim(trainRaw)[2]` measures in the training data.
+
+```{r}
+sum(!complete.cases(trainRaw))
+sum(!complete.cases(testRaw))
+```
+There are missing values in both training and testing datasets. 
+
+```{r}
+trainRaw <- trainRaw[, colSums(is.na(trainRaw)) == 0] 
+testRaw <- testRaw[, colSums(is.na(testRaw)) == 0] 
+```
+Columns with missing values are removed
+
+```{r}
+#keep classe variables
+classe <- trainRaw$classe
+
+#remove "timestamp" columns that will not be used for this prediction
+trainRaw <- trainRaw[, !grepl("^X|timestamp|window", names(trainRaw))]
+testRaw <- testRaw[, !grepl("^X|timestamp|window", names(testRaw))]
+
+#change all variables into numeric for prediction
+trainCleaned <- trainRaw[, sapply(trainRaw, is.numeric)]
+testCleaned <- testRaw[, sapply(testRaw, is.numeric)]
+
+#reinstate classe prediction variable for prediction modelling
+trainCleaned$classe <- classe
+```
+Data is cleaned in preparation for modeling. There are `r dim(trainCleaned)[1]` observations in the cleaned training set and `r dim(testCleaned)[1]` observations in the testing dataset with `r dim(trainCleaned)[2]` variables in both sets. 
+
+```{r}
+set.seed(12345) #reproducibile purposes
+inTrain <- createDataPartition(trainCleaned$classe, p=0.70, list=F)
+trainData <- trainCleaned[inTrain, ]
+validData <- trainCleaned[-inTrain, ]
+```
+Training data is further split into 70% training set and 30% validation set. 
+
+####Predictive Modeling
+The predict activity, a model is built with the Random Forest algorithm, with 5-fold cross validation, due to its generally high accuracy performance and performance in working with outliers. 
+
+```{r}
+RFcontrol <- trainControl(method="cv", 5)
+RFmodel <- train(classe ~ ., data=trainData, method="rf", trControl=RFcontrol, ntree=250)
+RFmodel
+```
+Resultant model has a high accuracy of `r RFmodel$results[1,2]*100`%. 
+
+```{r}
+RFpredict <- predict(RFmodel, validData)
+confusionMatrix(validData$classe, RFpredict)
+```
+Applying the model on the validation dataset, the model has high specificity and sensitivity throughout all classe. Prediction performance does not favour any classe in particular.  
+
+```{r}
+accuracy <- postResample(RFpredict, validData$classe)
+accuracy
+SE <- 1 - as.numeric(confusionMatrix(validData$classe, RFpredict)$overall[1])
+SE
+```
+The accuracy of the model on the validation dataset is `r accuracy[1]*100`% while the out of sample error is estimated to be `r SE*100`%. 
+
+####Predicting Activities for Test Dataset
+```{r}
+result <- predict(RFmodel, testCleaned[, -length(names(testCleaned))])
+result
+```
+Predictive model is then applied to the test dataset. 
+
